@@ -15,5 +15,6 @@ import java.time.LocalDateTime;
 public class LoanApprovalDetailsDTO {
     private String userId;
     private loan_status status;
+    private String comment;
     private LocalDateTime time;
 }

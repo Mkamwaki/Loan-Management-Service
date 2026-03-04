@@ -7,6 +7,7 @@ import com.example.loantraking.facade.CollateralsFacade;
 import com.example.loantraking.repository.CustomerRepository;
 import com.example.loantraking.repository.LoanApprovalRepository;
 import com.example.loantraking.repository.LoanInfoRepository;
+import com.example.loantraking.repository.PaymentScheduleRepository;
 import com.example.loantraking.repository.loanFinanceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -21,7 +22,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.security.SecureRandom;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,6 +36,7 @@ public class LoanInfoService {
     private final CustomerRepository customerRepository;
     private final loanFinanceRepository loanFinanceRepository;
     private final LoanApprovalRepository loanApprovalRepository;
+    private final PaymentScheduleRepository paymentScheduleRepository;
     private final GuarantorService guarantorService;
     private final CollateralsFacade collateralsFacade;
     private final SecureRandom random = new SecureRandom();
@@ -120,6 +125,10 @@ public class LoanInfoService {
         loanInfo.setStatus(dto.getStatus());
         loanInfoRepository.save(loanInfo);
 
+        if (dto.getStatus() == loan_status.DISBURSED) {
+            createDisbursedPaymentSchedule(loanInfo);
+        }
+
         String userId = resolveUserIdFromJwt();
         if (userId == null) {
             throw new RuntimeException("User id not found in JWT");
@@ -134,6 +143,116 @@ public class LoanInfoService {
                 .build();
 
         loanApprovalRepository.save(approval);
+    }
+
+    private void createDisbursedPaymentSchedule(LoanInfo loanInfo) {
+        Integer loanTermMonths = loanInfo.getLoanTermMonths();
+        if (loanTermMonths == null || loanTermMonths <= 0) {
+            throw new RuntimeException("Cannot create payment schedule. Loan term must be greater than zero.");
+        }
+
+        BigDecimal totalPayableAmount = resolveTotalPayableAmount(loanInfo);
+        if (totalPayableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Cannot create payment schedule. Total payable amount must be greater than zero.");
+        }
+
+        LocalDate disbursedDate = LocalDate.now();
+        LocalDate maturityDate = disbursedDate.plusMonths(loanTermMonths);
+        List<LocalDate> paymentDates = buildPaymentDates(disbursedDate, maturityDate, loanInfo.getRepaymentFrequency());
+
+        paymentScheduleRepository.deleteByLoan_LoanNumber(loanInfo.getLoanNumber());
+
+        int totalPayments = paymentDates.size();
+        BigDecimal baseExpectedAmount = totalPayableAmount
+                .divide(BigDecimal.valueOf(totalPayments), 4, RoundingMode.DOWN);
+
+        BigDecimal allocatedAmount = BigDecimal.ZERO;
+        List<PaymentSchedule> scheduleRows = new ArrayList<>(totalPayments);
+        for (int i = 0; i < totalPayments; i++) {
+            BigDecimal expectedAmount;
+            if (i == totalPayments - 1) {
+                expectedAmount = totalPayableAmount.subtract(allocatedAmount).setScale(4, RoundingMode.HALF_UP);
+            } else {
+                expectedAmount = baseExpectedAmount;
+                allocatedAmount = allocatedAmount.add(expectedAmount);
+            }
+
+            scheduleRows.add(PaymentSchedule.builder()
+                    .loan(loanInfo)
+                    .paymentDate(paymentDates.get(i))
+                    .paymentNo(i + 1)
+                    .expectedAmount(expectedAmount)
+                    .build());
+        }
+
+        paymentScheduleRepository.saveAll(scheduleRows);
+    }
+
+    private BigDecimal resolveTotalPayableAmount(LoanInfo loanInfo) {
+        BigDecimal amountFromFinance = loanFinanceRepository.findByLoan_LoanNumber(loanInfo.getLoanNumber())
+                .map(finance -> {
+                    BigDecimal outstanding = finance.getOutstandingAmount() != null ? finance.getOutstandingAmount() : BigDecimal.ZERO;
+                    BigDecimal paid = finance.getPaidAmount() != null ? finance.getPaidAmount() : BigDecimal.ZERO;
+                    BigDecimal totalFromOutstanding = outstanding.add(paid);
+                    if (totalFromOutstanding.compareTo(BigDecimal.ZERO) > 0) {
+                        return totalFromOutstanding;
+                    }
+
+                    BigDecimal disbursed = finance.getDisbursedAmount() != null ? finance.getDisbursedAmount() : BigDecimal.ZERO;
+                    BigDecimal accruedInterest = finance.getAccruedInterest() != null ? finance.getAccruedInterest() : BigDecimal.ZERO;
+                    return disbursed.add(accruedInterest);
+                })
+                .orElse(BigDecimal.ZERO);
+
+        if (amountFromFinance.compareTo(BigDecimal.ZERO) > 0) {
+            return amountFromFinance;
+        }
+
+        BigDecimal principal = loanInfo.getPrincipalAmount() != null ? loanInfo.getPrincipalAmount() : BigDecimal.ZERO;
+        if (principal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Cannot create payment schedule. Loan amount is missing for loan: " + loanInfo.getLoanNumber());
+        }
+
+        BigDecimal interestRatePercent = loanInfo.getInterestRate() != null ? loanInfo.getInterestRate() : BigDecimal.ZERO;
+        Integer tenure = loanInfo.getLoanTermMonths() != null ? loanInfo.getLoanTermMonths() : 0;
+        if (tenure > 0 && interestRatePercent.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal interest = principal
+                    .multiply(interestRatePercent)
+                    .multiply(BigDecimal.valueOf(tenure))
+                    .divide(BigDecimal.valueOf(1200), 15, RoundingMode.HALF_UP);
+            return principal.add(interest).setScale(4, RoundingMode.HALF_UP);
+        }
+
+        return principal.setScale(4, RoundingMode.HALF_UP);
+    }
+
+    private List<LocalDate> buildPaymentDates(LocalDate disbursedDate, LocalDate maturityDate, String repaymentFrequency) {
+        List<LocalDate> paymentDates = new ArrayList<>();
+        LocalDate paymentDate = incrementPaymentDate(disbursedDate, repaymentFrequency);
+
+        while (!paymentDate.isAfter(maturityDate)) {
+            paymentDates.add(paymentDate);
+            paymentDate = incrementPaymentDate(paymentDate, repaymentFrequency);
+        }
+
+        if (paymentDates.isEmpty()) {
+            paymentDates.add(maturityDate);
+        }
+
+        return paymentDates;
+    }
+
+    private LocalDate incrementPaymentDate(LocalDate date, String repaymentFrequency) {
+        String normalized = repaymentFrequency == null ? "" : repaymentFrequency.trim().toUpperCase(Locale.ROOT);
+
+        return switch (normalized) {
+            case "DAILY", "DAY", "PER_DAY" -> date.plusDays(1);
+            case "WEEKLY", "WEEK" -> date.plusWeeks(1);
+            case "BIWEEKLY", "BI-WEEKLY", "FORTNIGHTLY", "EVERY_2_WEEKS" -> date.plusWeeks(2);
+            case "QUARTERLY" -> date.plusMonths(3);
+            case "MONTHLY", "MONTH" -> date.plusMonths(1);
+            default -> date.plusMonths(1);
+        };
     }
 
     private String resolveUserIdFromJwt() {

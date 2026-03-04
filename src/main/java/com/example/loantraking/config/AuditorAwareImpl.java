@@ -4,6 +4,8 @@ import org.springframework.data.domain.AuditorAware;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
@@ -19,6 +21,13 @@ public class AuditorAwareImpl implements AuditorAware<String> {
             if (authentication == null || !authentication.isAuthenticated()) {
                 return Optional.of("system");
             }
+
+            // Prefer email from JWT claims for resource-server auth.
+            String jwtEmail = extractEmailFromJwt(authentication);
+            if (jwtEmail != null) {
+                return Optional.of(jwtEmail);
+            }
+
             Object principal = authentication.getPrincipal();
             if (principal instanceof UserDetails) {
                 return Optional.ofNullable(((UserDetails) principal).getUsername());
@@ -42,5 +51,25 @@ public class AuditorAwareImpl implements AuditorAware<String> {
         } catch (Exception ex) {
             return Optional.of("system");
         }
+    }
+
+    private String extractEmailFromJwt(Authentication authentication) {
+        Jwt jwt = null;
+        if (authentication instanceof JwtAuthenticationToken jwtAuth) {
+            jwt = jwtAuth.getToken();
+        } else if (authentication.getPrincipal() instanceof Jwt principalJwt) {
+            jwt = principalJwt;
+        }
+
+        if (jwt == null) {
+            return null;
+        }
+
+        Object claim = jwt.getClaims().get("email");
+        if (claim == null) claim = jwt.getClaims().get("preferred_username");
+        if (claim == null) claim = jwt.getClaims().get("upn");
+        if (claim == null) claim = jwt.getClaims().get("sub");
+
+        return claim instanceof String value ? value : null;
     }
 }

@@ -19,6 +19,8 @@ public class LoanApprovalServiceImpl implements LoanApprovalService {
                 .map(approval -> LoanApprovalDetailsDTO.builder()
                         .userId(approval.getUserId())
                         .status(approval.getStatus())
+                        .comment(approval.getComment())
+
                         .time(approval.getCreatedDate())
                         .build())
                 .toList();
