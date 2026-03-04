@@ -27,6 +27,16 @@ public class InstallmentsController {
         }
     }
 
+    @PostMapping("/pay")
+    public ResponseEntity<InstallmentResponseDTO> addInstallmentAndMarkPaid(@Valid @RequestBody InstallmentRequestDTO request) {
+        try {
+            InstallmentResponseDTO response = installmentsService.addInstallmentAndMarkSchedulePaid(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(null);
+        }
+    }
+
     @GetMapping("/{loanNumber}")
     public ResponseEntity<List<InstallmentResponseDTO>> getInstallments(@PathVariable String loanNumber) {
         List<InstallmentResponseDTO> list = installmentsService.getInstallmentsByLoanNumber(loanNumber);

@@ -2,11 +2,15 @@ package com.example.loantraking.service;
 
 import com.example.loantraking.Entity.Installments;
 import com.example.loantraking.Entity.LoanInfo;
+import com.example.loantraking.Entity.PaymentSchedule;
 import com.example.loantraking.Entity.loanFinance;
 import com.example.loantraking.dto.InstallmentRequestDTO;
 import com.example.loantraking.dto.InstallmentResponseDTO;
+import com.example.loantraking.enums.PaymentScheduleStatus;
+import com.example.loantraking.enums.loan_status;
 import com.example.loantraking.repository.InstallmentsRepository;
 import com.example.loantraking.repository.LoanInfoRepository;
+import com.example.loantraking.repository.PaymentScheduleRepository;
 import com.example.loantraking.repository.loanFinanceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -27,11 +31,27 @@ public class InstallmentsService {
     private final InstallmentsRepository installmentsRepository;
     private final LoanInfoRepository loanInfoRepository;
     private final loanFinanceRepository loanFinanceRepository;
+    private final PaymentScheduleRepository paymentScheduleRepository;
 
     @Transactional
     public InstallmentResponseDTO addInstallment(InstallmentRequestDTO request) {
+        return createInstallmentPayment(request, false);
+    }
+
+    @Transactional
+    public InstallmentResponseDTO addInstallmentAndMarkSchedulePaid(InstallmentRequestDTO request) {
+        return createInstallmentPayment(request, true);
+    }
+
+    private InstallmentResponseDTO createInstallmentPayment(InstallmentRequestDTO request, boolean updateScheduleStatus) {
+        if (request.getLoanNumber() == null || request.getLoanNumber().trim().isEmpty()) {
+            throw new IllegalArgumentException("Loan number is required");
+        }
         if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Amount must be greater than zero");
+        }
+        if (updateScheduleStatus && request.getInstallmentId() == null) {
+            throw new IllegalArgumentException("installmentId is required");
         }
 
         LoanInfo loan = loanInfoRepository.findByLoanNumber(request.getLoanNumber())
@@ -74,6 +94,13 @@ public class InstallmentsService {
         finance.setLastModifiedBy(userEmail);
 
         loanFinanceRepository.save(finance);
+        if (newOutstanding.compareTo(BigDecimal.ZERO) == 0 && loan.getStatus() != loan_status.CLOSED) {
+            loan.setStatus(loan_status.CLOSED);
+            loanInfoRepository.save(loan);
+        }
+        if (updateScheduleStatus) {
+            updatePaymentScheduleToPaid(request.getInstallmentId(), loan.getLoanNumber());
+        }
 
         return InstallmentResponseDTO.builder()
                 .id(saved.getId())
@@ -82,6 +109,19 @@ public class InstallmentsService {
                 .createdBy(saved.getCreatedBy())
                 .createdDate(saved.getCreatedDate())
                 .build();
+    }
+
+    private void updatePaymentScheduleToPaid(Long scheduleId, String loanNumber) {
+        PaymentSchedule schedule = paymentScheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new RuntimeException("Payment schedule not found with id: " + scheduleId));
+
+        String scheduleLoanNumber = schedule.getLoan() != null ? schedule.getLoan().getLoanNumber() : null;
+        if (scheduleLoanNumber == null || !scheduleLoanNumber.equals(loanNumber)) {
+            throw new IllegalArgumentException("installmentId does not belong to loan number: " + loanNumber);
+        }
+
+        schedule.setStatus(PaymentScheduleStatus.PAID);
+        paymentScheduleRepository.save(schedule);
     }
 
     @Transactional(readOnly = true)

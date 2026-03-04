@@ -8,5 +8,6 @@ import java.math.BigDecimal;
 public class InstallmentRequestDTO {
     private String loanNumber;
     private BigDecimal amount;
+    private Long installmentId;
 }
 
