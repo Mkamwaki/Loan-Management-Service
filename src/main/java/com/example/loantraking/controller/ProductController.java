@@ -3,6 +3,8 @@ package com.example.loantraking.controller;
 import com.example.loantraking.dto.ProductDTO;
 import com.example.loantraking.exception.DuplicateResourceException;
 import com.example.loantraking.facade.ProductFacade;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +15,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("loan/products")
+@Tag(name = "Product Management", description = "APIs for managing loan products (loan types, interest rates, etc.)")
 public class ProductController {
 
     private final ProductFacade productFacade;
@@ -21,6 +24,7 @@ public class ProductController {
         this.productFacade = productFacade;
     }
 
+    @Operation(summary = "Create a new loan product")
     @PostMapping
     public ResponseEntity<?> create(@RequestBody ProductDTO dto) {
         try {
@@ -39,6 +43,7 @@ public class ProductController {
         }
     }
 
+    @Operation(summary = "Update an existing loan product")
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody ProductDTO dto) {
         try {
@@ -57,6 +62,7 @@ public class ProductController {
         }
     }
 
+    @Operation(summary = "Delete a loan product by ID")
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
         try {
@@ -71,11 +77,13 @@ public class ProductController {
         }
     }
 
+    @Operation(summary = "Get all loan products")
     @GetMapping
     public ResponseEntity<List<ProductDTO>> getAll() {
         return ResponseEntity.ok(productFacade.getAll());
     }
 
+    @Operation(summary = "Get a loan product by ID")
     @GetMapping("/{id}")
     public ResponseEntity<ProductDTO> getById(@PathVariable Long id) {
         ProductDTO dto = productFacade.getById(id);
@@ -83,6 +91,7 @@ public class ProductController {
         return ResponseEntity.ok(dto);
     }
 
+    @Operation(summary = "Get a loan product by product code")
     @GetMapping("/code/{code}")
     public ResponseEntity<ProductDTO> getByCode(@PathVariable String code) {
         // try find by code via facade

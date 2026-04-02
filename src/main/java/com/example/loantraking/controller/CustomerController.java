@@ -2,6 +2,8 @@ package com.example.loantraking.controller;
 
 import com.example.loantraking.dto.CustomerDTO;
 import com.example.loantraking.facade.CustomerFacade;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,10 +22,12 @@ import java.util.List;
 @RequestMapping({"loan/customers", "loan/custormers"})
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Customer Management", description = "APIs for managing customers")
 public class CustomerController {
 
     private final CustomerFacade customerFacade;
 
+    @Operation(summary = "Register a new customer")
     @PostMapping("/register")
     public ResponseEntity<CustomerDTO> registerCustomer(@Valid @RequestBody CustomerDTO customerDTO) {
         log.info("Received request to register customer: {}", customerDTO);

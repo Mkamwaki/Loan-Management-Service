@@ -3,6 +3,8 @@ package com.example.loantraking.controller;
 import com.example.loantraking.dto.InstallmentRequestDTO;
 import com.example.loantraking.dto.InstallmentResponseDTO;
 import com.example.loantraking.service.InstallmentsService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,10 +15,12 @@ import java.util.List;
 @RestController
 @RequestMapping("/loan/installments")
 @RequiredArgsConstructor
+@Tag(name = "Loan Installments", description = "APIs for managing loan installments and payments")
 public class InstallmentsController {
 
     private final InstallmentsService installmentsService;
 
+    @Operation(summary = "Add a new installment")
     @PostMapping
     public ResponseEntity<InstallmentResponseDTO> addInstallment(@Valid @RequestBody InstallmentRequestDTO request) {
         try {
@@ -27,6 +31,7 @@ public class InstallmentsController {
         }
     }
 
+    @Operation(summary = "Add an installment and mark the schedule as paid")
     @PostMapping("/pay")
     public ResponseEntity<InstallmentResponseDTO> addInstallmentAndMarkPaid(@Valid @RequestBody InstallmentRequestDTO request) {
         try {
@@ -37,6 +42,7 @@ public class InstallmentsController {
         }
     }
 
+    @Operation(summary = "Get installments by loan number")
     @GetMapping("/{loanNumber}")
     public ResponseEntity<List<InstallmentResponseDTO>> getInstallments(@PathVariable String loanNumber) {
         List<InstallmentResponseDTO> list = installmentsService.getInstallmentsByLoanNumber(loanNumber);

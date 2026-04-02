@@ -2,6 +2,8 @@ package com.example.loantraking.controller;
 
 import com.example.loantraking.dto.CustomerAttachmentDTO;
 import com.example.loantraking.facade.CustomerAttachmentFacade;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,16 +21,19 @@ import java.util.List;
 @RequestMapping("loan/customer-attachments")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Customer Attachments", description = "APIs for managing customer documents and attachments")
 public class CustomerAttachmentController {
 
     private final CustomerAttachmentFacade attachmentFacade;
 
+    @Operation(summary = "Add a new attachment for a customer")
     @PostMapping
     public ResponseEntity<CustomerAttachmentDTO> addAttachment(@Valid @RequestBody CustomerAttachmentDTO attachmentDTO) {
         log.info("Received request to add attachment: {}", attachmentDTO);
         return ResponseEntity.ok(attachmentFacade.addAttachment(attachmentDTO));
     }
 
+    @Operation(summary = "Get all attachments for a customer with pagination")
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<Page<CustomerAttachmentDTO>> getAttachmentsByCustomerId(
             @PathVariable String customerId,
@@ -37,12 +42,14 @@ public class CustomerAttachmentController {
         return ResponseEntity.ok(attachmentFacade.getAttachmentsByCustomerId(customerId, pageable));
     }
 
+    @Operation(summary = "Get attachment details by ID")
     @GetMapping("/{id}")
     public ResponseEntity<CustomerAttachmentDTO> getAttachment(@PathVariable Long id) {
         log.info("Received request to get attachment with id: {}", id);
         return ResponseEntity.ok(attachmentFacade.getAttachment(id));
     }
 
+    @Operation(summary = "View/Download attachment content by ID")
     @GetMapping("/{id}/view")
     public ResponseEntity<byte[]> viewAttachment(@PathVariable Long id) {
         log.info("Received request to view attachment with id: {}", id);
@@ -69,6 +76,7 @@ public class CustomerAttachmentController {
                 .body(content);
     }
 
+    @Operation(summary = "Delete an attachment by ID")
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteAttachment(@PathVariable Long id) {
         log.info("Received request to delete attachment with id: {}", id);
